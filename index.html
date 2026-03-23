@@ -190,7 +190,10 @@
       </div>
       <div class="add-row">
         <input class="add-input" id="client-input" placeholder="タスク内容を入力…" />
-        <button class="add-btn" onclick="addClientTask()">追加</button>
+      </div>
+      <div class="add-row">
+        <input class="add-input" type="date" id="client-date" style="max-width:160px;" />
+        <button class="add-btn" onclick="addClientTask()" style="flex:1;">追加</button>
       </div>
     </div>
     <div id="client-list"></div>
@@ -266,7 +269,7 @@ document.addEventListener('click', () => document.getElementById('theme-btn').cl
 // ============================================================
 //  ★ GAS Web App URL をここに貼り付けてください
 // ============================================================
-const GAS_URL = 'https://script.google.com/macros/s/AKfycbwhsOdGFZpVlml2GSdrJwscQGdsN9gMFOWgcIBsGGysIbmr5_w-fZDeGaipGVnYl-smmA/exec';
+const GAS_URL = 'YOUR_GAS_URL_HERE';
 // ============================================================
 
 let app = { theme:'dark', clients:[], clientTasks:[], todos:[], memoClient:'', memoTodo:'', nextId:1 };
@@ -375,7 +378,7 @@ function renderClients() {
     ts.forEach(t=>{
       html+=`<div class="task-card ${t.done?'done':''}">
         <div class="task-check" onclick="toggleClient(${t.id})"><span class="check-icon">✓</span></div>
-        <div class="task-body"><div class="task-text">${t.text}</div></div>
+        <div class="task-body"><div class="task-text">${t.text}</div>${t.due?dueLabel(t.due):''}</div>
         ${t.priority==='NEXT'?'<span class="priority-next">NEXT</span>':''}
         <button class="task-del" onclick="delClient(${t.id})">✕</button>
       </div>`;
@@ -389,9 +392,11 @@ function delClient(id){ app.clientTasks=app.clientTasks.filter(x=>x.id!==id); sa
 function addClientTask(){
   const client=document.getElementById('client-sel').value;
   const text=document.getElementById('client-input').value.trim();
+  const due=document.getElementById('client-date').value;
   if(!text){document.getElementById('client-input').focus();return;}
-  app.clientTasks.push({id:app.nextId++,client,text,done:false,priority:''});
+  app.clientTasks.push({id:app.nextId++,client,text,done:false,priority:'',due});
   document.getElementById('client-input').value='';
+  document.getElementById('client-date').value='';
   save();renderClients();
 }
 document.getElementById('client-input').addEventListener('keydown',e=>{if(e.key==='Enter')addClientTask();});
