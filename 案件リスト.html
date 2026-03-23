@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>案件リスト</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&family=JetBrains+Mono:wght@400;600&display=swap');
+
+  :root {
+    --bg:#0f1117; --surface:#1a1d27; --surface2:#22263a; --border:#2e3350;
+    --accent:#4f8ef7; --accent-rgb:79,142,247;
+    --accent2:#f7934f; --accent3:#4ff794; --accent4:#f74f7b;
+    --text:#e8eaf6; --text-dim:#7b82a8; --text-muted:#454d70;
+    --radius:10px; --radius-sm:6px;
+  }
+
+  /* ── Theme presets ── */
+  [data-theme="dark"]   { --bg:#0f1117; --surface:#1a1d27; --surface2:#22263a; --border:#2e3350; --accent:#4f8ef7; --accent-rgb:79,142,247; --text:#e8eaf6; --text-dim:#7b82a8; --text-muted:#454d70; }
+  [data-theme="ocean"]  { --bg:#091520; --surface:#0e2030; --surface2:#12293e; --border:#1a3a52; --accent:#38c9f0; --accent-rgb:56,201,240; --text:#d6f0f8; --text-dim:#6aa8be; --text-muted:#2e5a72; }
+  [data-theme="forest"] { --bg:#0d1a10; --surface:#152019; --surface2:#1c2e22; --border:#263d2c; --accent:#5ecb7c; --accent-rgb:94,203,124; --text:#d4edda; --text-dim:#6aaa80; --text-muted:#2e5438; }
+  [data-theme="dusk"]   { --bg:#16101f; --surface:#211630; --surface2:#2c1e40; --border:#3d2a5a; --accent:#b07ef7; --accent-rgb:176,126,247; --text:#e8ddf8; --text-dim:#907ab8; --text-muted:#4a3570; }
+  [data-theme="sand"]   { --bg:#f5f0e8; --surface:#fffdf8; --surface2:#f0ebe0; --border:#ddd5c0; --accent:#c07840; --accent-rgb:192,120,64; --text:#2a2015; --text-dim:#6a5a40; --text-muted:#a89878; }
+  [data-theme="mono"]   { --bg:#111111; --surface:#1e1e1e; --surface2:#2a2a2a; --border:#3a3a3a; --accent:#e0e0e0; --accent-rgb:224,224,224; --text:#f0f0f0; --text-dim:#888; --text-muted:#444; }
+
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { background:var(--bg); color:var(--text); font-family:'Noto Sans JP',sans-serif; font-size:14px; min-height:100vh; transition:background .3s,color .3s; }
+
+  /* ── Top bar (tabs + theme) ── */
+  .topbar {
+    display:flex; align-items:stretch;
+    background:var(--surface); border-bottom:1px solid var(--border);
+    position:sticky; top:0; z-index:100;
+  }
+  .tabs { display:flex; flex:1; overflow:hidden; }
+  .tab {
+    flex:1; padding:12px 0; font-size:13px; font-weight:500;
+    color:var(--text-dim); cursor:pointer; text-align:center;
+    border-bottom:2px solid transparent; transition:all .2s;
+  }
+  .tab.active { color:var(--accent); border-bottom-color:var(--accent); }
+  .tab:hover:not(.active) { color:var(--text); }
+
+  /* theme picker */
+  .theme-btn {
+    display:flex; align-items:center; gap:6px;
+    padding:0 14px; font-size:11px; color:var(--text-muted);
+    cursor:pointer; border-left:1px solid var(--border);
+    position:relative; user-select:none;
+    transition:color .2s;
+  }
+  .theme-btn:hover { color:var(--text-dim); }
+  .theme-dot { width:10px; height:10px; border-radius:50%; background:var(--accent); flex-shrink:0; }
+  .theme-dropdown {
+    display:none; position:absolute; top:100%; right:0;
+    background:var(--surface); border:1px solid var(--border);
+    border-radius:var(--radius-sm); padding:6px; min-width:140px;
+    box-shadow:0 8px 24px rgba(0,0,0,.4); z-index:200;
+  }
+  .theme-btn.open .theme-dropdown { display:block; }
+  .theme-option {
+    display:flex; align-items:center; gap:10px;
+    padding:8px 10px; border-radius:4px; cursor:pointer;
+    font-size:12px; color:var(--text-dim); transition:background .15s;
+  }
+  .theme-option:hover { background:var(--surface2); color:var(--text); }
+  .theme-option.active { color:var(--accent); }
+  .theme-swatch { width:12px; height:12px; border-radius:50%; flex-shrink:0; }
+
+  /* ── Main ── */
+  main { padding:14px 16px; max-width:720px; margin:0 auto; }
+  .section { display:none; }
+  .section.active { display:block; }
+
+  /* memo box */
+  .memo-box {
+    background:var(--surface); border:1px solid var(--border);
+    border-radius:var(--radius); padding:0; margin-bottom:14px;
+    overflow:hidden; transition:border-color .2s;
+  }
+  .memo-box:focus-within { border-color:rgba(var(--accent-rgb),.5); }
+  .memo-textarea {
+    width:100%; min-height:80px; max-height:240px;
+    background:transparent; border:none; outline:none; resize:vertical;
+    padding:12px 14px; color:var(--text); font-family:'Noto Sans JP',sans-serif;
+    font-size:13px; line-height:1.7;
+  }
+  .memo-textarea::placeholder { color:var(--text-muted); }
+
+  /* stats */
+  .stats { display:flex; gap:8px; margin-bottom:12px; flex-wrap:wrap; }
+  .stat { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-sm); padding:6px 11px; display:flex; align-items:center; gap:7px; font-size:12px; color:var(--text-dim); }
+  .stat-num { font-family:'JetBrains Mono',monospace; font-weight:700; font-size:16px; }
+  .sn-blue { color:var(--accent); }
+  .sn-green { color:var(--accent3); }
+  .sn-orange { color:var(--accent2); }
+  .sn-red { color:var(--accent4); }
+
+  /* add area */
+  .add-area { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:11px; margin-bottom:14px; display:flex; flex-direction:column; gap:8px; }
+  .add-row { display:flex; gap:8px; }
+  .add-input { flex:1; background:var(--surface2); border:1px solid var(--border); border-radius:var(--radius-sm); padding:8px 12px; color:var(--text); font-family:'Noto Sans JP',sans-serif; font-size:13px; outline:none; transition:border-color .2s; min-width:0; }
+  .add-input:focus { border-color:rgba(var(--accent-rgb),.6); }
+  .add-input::placeholder { color:var(--text-muted); }
+  select.add-input { cursor:pointer; }
+  .add-btn { background:var(--accent); border:none; border-radius:var(--radius-sm); padding:8px 15px; color:#fff; font-weight:700; font-size:13px; cursor:pointer; white-space:nowrap; flex-shrink:0; opacity:.95; transition:opacity .2s; }
+  .add-btn:hover { opacity:1; }
+  .add-btn.sec { background:var(--surface2); border:1px solid var(--border); color:var(--text-dim); font-weight:500; }
+  .add-btn.sec:hover { color:var(--text); border-color:var(--accent); }
+
+  /* group */
+  .group-header { display:flex; align-items:center; gap:8px; margin:16px 0 8px; padding-bottom:6px; border-bottom:1px solid var(--border); }
+  .group-header:first-of-type { margin-top:0; }
+  .group-label { font-size:10px; font-weight:700; letter-spacing:.12em; color:var(--text-muted); text-transform:uppercase; }
+  .group-count { font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--text-muted); background:var(--surface2); padding:1px 6px; border-radius:99px; }
+
+  /* task card */
+  .task-card { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:10px 12px; margin-bottom:6px; display:flex; align-items:flex-start; gap:10px; transition:border-color .15s,background .15s; }
+  .task-card:hover { border-color:rgba(var(--accent-rgb),.35); background:var(--surface2); }
+  .task-card.done { background:var(--surface); border-color:var(--border); opacity:.45; }
+  .task-card.done .task-text { text-decoration:line-through; color:var(--text-muted); }
+
+  .task-check { width:19px; height:19px; border:2px solid var(--border); border-radius:50%; flex-shrink:0; display:flex; align-items:center; justify-content:center; margin-top:2px; cursor:pointer; transition:all .15s; }
+  .task-card.done .task-check { background:var(--accent3); border-color:var(--accent3); }
+  .check-icon { display:none; font-size:10px; color:#0f1117; font-weight:900; }
+  .task-card.done .check-icon { display:block; }
+
+  .task-body { flex:1; min-width:0; }
+  .task-text { font-size:13px; line-height:1.5; word-break:break-all; }
+
+  .task-due { font-size:11px; margin-top:3px; font-family:'JetBrains Mono',monospace; }
+  .due-over  { color:var(--accent4); }
+  .due-today { color:var(--accent4); }
+  .due-soon  { color:var(--accent2); }
+  .due-ok    { color:var(--text-muted); }
+
+  .priority-next { font-size:9px; font-weight:700; padding:2px 6px; border-radius:99px; background:rgba(var(--accent-rgb),.15); color:var(--accent); letter-spacing:.05em; flex-shrink:0; align-self:flex-start; margin-top:2px; }
+  .task-del { background:none; border:none; color:var(--text-muted); font-size:13px; cursor:pointer; padding:0 2px; flex-shrink:0; opacity:0; transition:opacity .15s,color .15s; }
+  .task-card:hover .task-del { opacity:1; }
+  .task-del:hover { color:var(--accent4); }
+
+  /* modal */
+  .modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.65); z-index:300; align-items:center; justify-content:center; padding:20px; }
+  .modal-overlay.open { display:flex; }
+  .modal { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:18px; width:100%; max-width:360px; }
+  .modal h3 { font-size:13px; font-weight:700; margin-bottom:12px; color:var(--text-dim); letter-spacing:.05em; }
+  .modal-list { max-height:200px; overflow-y:auto; margin-bottom:11px; }
+  .modal-item { display:flex; align-items:center; gap:8px; padding:6px 8px; border-radius:var(--radius-sm); font-size:13px; }
+  .modal-item:hover { background:var(--surface2); }
+  .modal-item-name { flex:1; }
+  .modal-item-del { background:none; border:none; color:var(--text-muted); cursor:pointer; font-size:13px; padding:0 3px; }
+  .modal-item-del:hover { color:var(--accent4); }
+  .modal-add-row { display:flex; gap:8px; margin-bottom:12px; }
+  .modal-footer { display:flex; justify-content:flex-end; }
+  .modal-close { background:var(--surface2); border:1px solid var(--border); color:var(--text-dim); border-radius:var(--radius-sm); padding:7px 18px; cursor:pointer; font-size:13px; }
+  .modal-close:hover { color:var(--text); }
+
+  .empty { text-align:center; padding:36px 20px; color:var(--text-muted); font-size:13px; }
+</style>
+</head>
+<body data-theme="dark">
+
+<!-- ── Top bar ── -->
+<div class="topbar">
+  <div class="tabs">
+    <div class="tab active" id="tab-client" onclick="showTab('client')">クライアント別</div>
+    <div class="tab" id="tab-todo" onclick="showTab('todo')">ToDo</div>
+  </div>
+  <div id="sync-status" style="display:flex;align-items:center;padding:0 10px;border-left:1px solid var(--border);min-width:72px;"></div>
+  <div class="theme-btn" id="theme-btn" onclick="toggleThemeMenu(event)">
+    <div class="theme-dot"></div>
+    <span>テーマ</span>
+    <div class="theme-dropdown" id="theme-dd">
+      <!-- populated by JS -->
+    </div>
+  </div>
+</div>
+
+<main>
+  <!-- ── クライアント別 ── -->
+  <div class="section active" id="sec-client">
+    <div class="memo-box">
+      <textarea class="memo-textarea" id="memo-client" placeholder="週間目標・意識したいこと・メモ…"></textarea>
+    </div>
+    <div class="stats" id="stats-client"></div>
+    <div class="add-area">
+      <div class="add-row">
+        <select class="add-input" id="client-sel" style="max-width:175px;"></select>
+        <button class="add-btn sec" onclick="openModal()">＋ 企業追加</button>
+      </div>
+      <div class="add-row">
+        <input class="add-input" id="client-input" placeholder="タスク内容を入力…" />
+        <button class="add-btn" onclick="addClientTask()">追加</button>
+      </div>
+    </div>
+    <div id="client-list"></div>
+  </div>
+
+  <!-- ── ToDo ── -->
+  <div class="section" id="sec-todo">
+    <div class="memo-box">
+      <textarea class="memo-textarea" id="memo-todo" placeholder="週間目標・意識したいこと・メモ…"></textarea>
+    </div>
+    <div class="stats" id="stats-todo"></div>
+    <div class="add-area">
+      <div class="add-row">
+        <input class="add-input" id="todo-input" placeholder="ToDoを入力…" />
+      </div>
+      <div class="add-row">
+        <input class="add-input" type="date" id="todo-date" style="max-width:160px;" />
+        <button class="add-btn" onclick="addTodo()" style="flex:1;">追加</button>
+      </div>
+    </div>
+    <div id="todo-list"></div>
+  </div>
+</main>
+
+<!-- 企業管理モーダル -->
+<div class="modal-overlay" id="modal" onclick="if(event.target===this)closeModal()">
+  <div class="modal">
+    <h3>企業リスト管理</h3>
+    <div class="modal-list" id="modal-list"></div>
+    <div class="modal-add-row">
+      <input class="add-input" id="modal-input" placeholder="企業名を入力…" />
+      <button class="add-btn" onclick="addClient()">追加</button>
+    </div>
+    <div class="modal-footer">
+      <button class="modal-close" onclick="closeModal()">閉じる</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── Themes ──
+const THEMES = [
+  { id:'dark',   label:'ダーク',   dot:'#4f8ef7' },
+  { id:'ocean',  label:'オーシャン', dot:'#38c9f0' },
+  { id:'forest', label:'フォレスト', dot:'#5ecb7c' },
+  { id:'dusk',   label:'ダスク',   dot:'#b07ef7' },
+  { id:'sand',   label:'サンド',   dot:'#c07840' },
+  { id:'mono',   label:'モノクロ',  dot:'#e0e0e0' },
+];
+
+function initThemeMenu() {
+  const cur = app.theme || 'dark';
+  document.getElementById('theme-dd').innerHTML = THEMES.map(t => `
+    <div class="theme-option ${t.id===cur?'active':''}" onclick="setTheme('${t.id}',event)">
+      <span class="theme-swatch" style="background:${t.dot}"></span>
+      ${t.label}
+    </div>`).join('');
+}
+function setTheme(id, e) {
+  if(e) e.stopPropagation();
+  document.body.setAttribute('data-theme', id);
+  app.theme = id;
+  save();
+  document.getElementById('theme-btn').classList.remove('open');
+  initThemeMenu();
+}
+function toggleThemeMenu(e) {
+  e.stopPropagation();
+  document.getElementById('theme-btn').classList.toggle('open');
+}
+document.addEventListener('click', () => document.getElementById('theme-btn').classList.remove('open'));
+
+// ============================================================
+//  ★ GAS Web App URL をここに貼り付けてください
+// ============================================================
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbwhsOdGFZpVlml2GSdrJwscQGdsN9gMFOWgcIBsGGysIbmr5_w-fZDeGaipGVnYl-smmA/exec';
+// ============================================================
+
+let app = { theme:'dark', clients:[], clientTasks:[], todos:[], memoClient:'', memoTodo:'', nextId:1 };
+
+// ── キャッシュ（オフライン時フォールバック）──
+const CACHE_KEY = 'arc_v3_cache';
+function saveCache(d) { try { localStorage.setItem(CACHE_KEY, JSON.stringify(d)); } catch(e){} }
+function loadCache()  { try { const d=localStorage.getItem(CACHE_KEY); return d?JSON.parse(d):null; } catch(e){return null;} }
+
+// ── 保存（デバウンスしてGASに送信）──
+let _saveTimer = null;
+function save() {
+  saveCache(app);
+  clearTimeout(_saveTimer);
+  _saveTimer = setTimeout(syncToGAS, 800);
+}
+
+async function syncToGAS() {
+  if (!GAS_URL || GAS_URL === 'YOUR_GAS_URL_HERE') return;
+  setStatus('saving');
+  try {
+    await fetch(GAS_URL, { method:'POST', body: JSON.stringify({ data: app }) });
+    setStatus('saved');
+  } catch(e) { setStatus('error'); }
+}
+
+// ── 起動時にGASから読み込み ──
+async function loadFromGAS() {
+  if (!GAS_URL || GAS_URL === 'YOUR_GAS_URL_HERE') {
+    app = loadCache() || app;
+    return;
+  }
+  setStatus('loading');
+  try {
+    const res  = await fetch(GAS_URL);
+    const json = await res.json();
+    if (json.ok && json.data) { app = json.data; saveCache(app); setStatus('synced'); }
+    else throw new Error();
+  } catch(e) {
+    app = loadCache() || app;
+    setStatus('offline');
+  }
+}
+
+// ── 同期ステータス表示 ──
+function setStatus(state) {
+  const el = document.getElementById('sync-status');
+  if (!el) return;
+  const m = { loading:['⟳','#7b82a8','読込中'], saving:['⟳','#7b82a8','保存中'], saved:['✓','#4ff794','保存済'], synced:['✓','#4ff794','同期済'], error:['✕','#f74f7b','失敗'], offline:['△','#f7934f','ｵﾌﾗｲﾝ'] };
+  const [icon,color,label] = m[state]||['','',''];
+  el.innerHTML = `<span style="color:${color};font-size:11px;font-family:monospace;">${icon} ${label}</span>`;
+}
+
+// apply saved theme (暫定 — loadFromGAS後に再適用)
+document.body.setAttribute('data-theme', app.theme||'dark');
+
+// memo autosave
+function initMemos() {
+  const mc = document.getElementById('memo-client');
+  const mt = document.getElementById('memo-todo');
+  mc.value = app.memoClient||'';
+  mt.value = app.memoTodo||'';
+  mc.addEventListener('input', () => { app.memoClient=mc.value; save(); });
+  mt.addEventListener('input', () => { app.memoTodo=mt.value; save(); });
+}
+
+// ── Date helpers ──
+function todayStr() { return new Date().toISOString().slice(0,10); }
+function daysLeft(due) {
+  if(!due) return null;
+  return Math.ceil((new Date(due)-new Date(todayStr()))/86400000);
+}
+function dueLabel(due) {
+  if(!due) return '';
+  const d=daysLeft(due);
+  if(d<0)  return `<div class="task-due due-over">⚠ ${Math.abs(d)}日超過（${due}）</div>`;
+  if(d===0) return `<div class="task-due due-today">🔴 今日が期限</div>`;
+  if(d<=3)  return `<div class="task-due due-soon">🟠 あと${d}日（${due}）</div>`;
+  return `<div class="task-due due-ok">📅 ${due}</div>`;
+}
+
+// ── Client tasks ──
+function refreshSel() {
+  const sel=document.getElementById('client-sel'), cur=sel.value;
+  sel.innerHTML=app.clients.map(c=>`<option value="${c}">${c}</option>`).join('');
+  if(app.clients.includes(cur)) sel.value=cur;
+}
+
+function renderClients() {
+  refreshSel();
+  const tasks=app.clientTasks, done=tasks.filter(t=>t.done).length;
+  document.getElementById('stats-client').innerHTML=`
+    <div class="stat"><span class="stat-num sn-blue">${tasks.length-done}</span> 残タスク</div>
+    <div class="stat"><span class="stat-num sn-green">${done}</span> 完了</div>
+    <div class="stat"><span class="stat-num sn-orange">${app.clients.length}</span> 企業</div>`;
+
+  const groups={};
+  app.clients.forEach(c=>groups[c]=[]);
+  tasks.forEach(t=>{ if(groups[t.client]!==undefined) groups[t.client].push(t); });
+
+  let html='';
+  for(const [client,ts] of Object.entries(groups)){
+    if(!ts.length) continue;
+    const undone=ts.filter(t=>!t.done).length;
+    html+=`<div class="group-header"><span class="group-label">${client}</span><span class="group-count">${undone}/${ts.length}</span></div>`;
+    ts.forEach(t=>{
+      html+=`<div class="task-card ${t.done?'done':''}">
+        <div class="task-check" onclick="toggleClient(${t.id})"><span class="check-icon">✓</span></div>
+        <div class="task-body"><div class="task-text">${t.text}</div></div>
+        ${t.priority==='NEXT'?'<span class="priority-next">NEXT</span>':''}
+        <button class="task-del" onclick="delClient(${t.id})">✕</button>
+      </div>`;
+    });
+  }
+  document.getElementById('client-list').innerHTML=html||'<div class="empty">タスクがありません</div>';
+}
+
+function toggleClient(id){ const t=app.clientTasks.find(x=>x.id===id); if(t){t.done=!t.done;save();renderClients();} }
+function delClient(id){ app.clientTasks=app.clientTasks.filter(x=>x.id!==id); save();renderClients(); }
+function addClientTask(){
+  const client=document.getElementById('client-sel').value;
+  const text=document.getElementById('client-input').value.trim();
+  if(!text){document.getElementById('client-input').focus();return;}
+  app.clientTasks.push({id:app.nextId++,client,text,done:false,priority:''});
+  document.getElementById('client-input').value='';
+  save();renderClients();
+}
+document.getElementById('client-input').addEventListener('keydown',e=>{if(e.key==='Enter')addClientTask();});
+
+// ── Todos ──
+function renderTodo(){
+  const todos=app.todos, done=todos.filter(t=>t.done).length;
+  const over=todos.filter(t=>!t.done&&t.due&&daysLeft(t.due)<0).length;
+  document.getElementById('stats-todo').innerHTML=`
+    <div class="stat"><span class="stat-num sn-blue">${todos.length-done}</span> 残タスク</div>
+    <div class="stat"><span class="stat-num sn-green">${done}</span> 完了</div>
+    ${over?`<div class="stat"><span class="stat-num sn-red">${over}</span> 期限超過</div>`:''}`;
+
+  const undone=todos.filter(t=>!t.done).sort((a,b)=>{
+    const da=a.due?new Date(a.due):new Date('9999-12-31');
+    const db=b.due?new Date(b.due):new Date('9999-12-31');
+    return da-db;
+  });
+  const doneList=todos.filter(t=>t.done);
+
+  let html='';
+  if(undone.length){
+    html+=`<div class="group-header"><span class="group-label">未完了</span><span class="group-count">${undone.length}</span></div>`;
+    undone.forEach(t=>{
+      html+=`<div class="task-card">
+        <div class="task-check" onclick="toggleTodo(${t.id})"><span class="check-icon">✓</span></div>
+        <div class="task-body"><div class="task-text">${t.text}</div>${dueLabel(t.due)}</div>
+        <button class="task-del" onclick="delTodo(${t.id})">✕</button>
+      </div>`;
+    });
+  }
+  if(doneList.length){
+    html+=`<div class="group-header" style="margin-top:18px;"><span class="group-label">完了済み</span><span class="group-count">${doneList.length}</span></div>`;
+    doneList.forEach(t=>{
+      html+=`<div class="task-card done">
+        <div class="task-check" onclick="toggleTodo(${t.id})"><span class="check-icon">✓</span></div>
+        <div class="task-body"><div class="task-text">${t.text}</div></div>
+        <button class="task-del" onclick="delTodo(${t.id})">✕</button>
+      </div>`;
+    });
+  }
+  document.getElementById('todo-list').innerHTML=html||'<div class="empty">ToDoがありません</div>';
+}
+
+function toggleTodo(id){ const t=app.todos.find(x=>x.id===id); if(t){t.done=!t.done;save();renderTodo();} }
+function delTodo(id){ app.todos=app.todos.filter(x=>x.id!==id); save();renderTodo(); }
+function addTodo(){
+  const text=document.getElementById('todo-input').value.trim();
+  const due=document.getElementById('todo-date').value;
+  if(!text){document.getElementById('todo-input').focus();return;}
+  app.todos.push({id:app.nextId++,text,done:false,due});
+  document.getElementById('todo-input').value='';
+  document.getElementById('todo-date').value='';
+  save();renderTodo();
+}
+document.getElementById('todo-input').addEventListener('keydown',e=>{if(e.key==='Enter')addTodo();});
+
+// ── Modal ──
+function openModal(){ renderModalList(); document.getElementById('modal').classList.add('open'); }
+function closeModal(){ document.getElementById('modal').classList.remove('open'); renderClients(); }
+function renderModalList(){
+  document.getElementById('modal-list').innerHTML=app.clients.map(c=>`
+    <div class="modal-item">
+      <span class="modal-item-name">${c}</span>
+      <button class="modal-item-del" onclick="removeClient(${JSON.stringify(c)})">✕</button>
+    </div>`).join('');
+}
+function addClient(){
+  const name=document.getElementById('modal-input').value.trim();
+  if(!name||app.clients.includes(name)) return;
+  app.clients.push(name);
+  document.getElementById('modal-input').value='';
+  save();renderModalList();refreshSel();
+}
+function removeClient(name){
+  if(!confirm(`「${name}」を削除しますか？`)) return;
+  app.clients=app.clients.filter(c=>c!==name);
+  save();renderModalList();refreshSel();
+}
+document.getElementById('modal-input').addEventListener('keydown',e=>{if(e.key==='Enter')addClient();});
+
+// ── Tabs ──
+function showTab(name){
+  ['client','todo'].forEach(n=>{
+    document.getElementById('tab-'+n).classList.toggle('active',n===name);
+    document.getElementById('sec-'+n).classList.toggle('active',n===name);
+  });
+}
+
+// ── Init ──
+async function init() {
+  await loadFromGAS();
+  document.body.setAttribute('data-theme', app.theme||'dark');
+  initThemeMenu();
+  initMemos();
+  renderClients();
+  renderTodo();
+}
+init();
+</script>
+</body>
+</html>
