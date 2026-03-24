@@ -147,6 +147,23 @@
   .task-edit-btn { font-size:10px; background:none; border:none; color:var(--text-muted); cursor:pointer; padding:0 2px; opacity:0; transition:opacity .15s,color .15s; }
   .task-card:hover .task-edit-btn { opacity:1; }
   .task-edit-btn:hover { color:var(--accent); }
+  .task-link-btn { font-size:11px; background:none; border:none; color:var(--text-muted); cursor:pointer; padding:0 2px; opacity:0; transition:opacity .15s,color .15s; }
+  .task-card:hover .task-link-btn { opacity:1; }
+  .task-link-btn:hover { color:var(--accent2); }
+  .task-links { display:flex; flex-wrap:wrap; gap:5px; margin-top:4px; }
+  .task-link-badge { display:inline-flex; align-items:center; gap:4px; font-size:11px; background:rgba(var(--accent-rgb),.12); color:var(--accent); border-radius:4px; padding:2px 7px; text-decoration:none; max-width:200px; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+  .task-link-badge:hover { background:rgba(var(--accent-rgb),.25); }
+  .task-link-del { background:none; border:none; color:var(--accent); cursor:pointer; font-size:11px; padding:0; margin-left:2px; opacity:.6; }
+  .task-link-del:hover { opacity:1; }
+  /* 期限・リンクモーダル */
+  .edit-modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.65); z-index:300; align-items:center; justify-content:center; padding:20px; }
+  .edit-modal-overlay.open { display:flex; }
+  .edit-modal { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:18px; width:100%; max-width:360px; }
+  .edit-modal h3 { font-size:13px; font-weight:700; margin-bottom:14px; color:var(--text-dim); }
+  .edit-modal-label { font-size:11px; color:var(--text-muted); margin-bottom:5px; display:block; }
+  .edit-modal-section { margin-bottom:14px; }
+  .edit-modal-row { display:flex; gap:8px; }
+  .edit-modal-footer { display:flex; justify-content:flex-end; gap:8px; margin-top:4px; }
   /* PDF出力ボタン */
   .pdf-btn { background:none; border:1px solid var(--border); border-radius:var(--radius-sm); padding:5px 11px; font-size:11px; color:var(--text-muted); cursor:pointer; display:flex; align-items:center; gap:5px; transition:all .2s; white-space:nowrap; }
   .pdf-btn:hover { border-color:var(--accent); color:var(--accent); }
@@ -253,6 +270,33 @@
   </div>
 </div>
 
+<!-- 期限・リンク編集モーダル -->
+<div class="edit-modal-overlay" id="edit-modal" onclick="if(event.target===this)closeEditModal()">
+  <div class="edit-modal">
+    <h3 id="edit-modal-title">タスク編集</h3>
+    <div class="edit-modal-section">
+      <span class="edit-modal-label">📅 期限</span>
+      <div class="edit-modal-row">
+        <input class="add-input" type="date" id="edit-modal-date" style="flex:1;" />
+        <button class="add-btn" onclick="saveEditDue()">設定</button>
+        <button class="add-btn sec" onclick="clearEditDue()">削除</button>
+      </div>
+    </div>
+    <div class="edit-modal-section">
+      <span class="edit-modal-label">🔗 リンク追加（Google Drive等のURL）</span>
+      <div class="edit-modal-row" style="margin-bottom:6px;">
+        <input class="add-input" id="edit-modal-link-label" placeholder="ラベル（例：契約書）" style="max-width:130px;" />
+        <input class="add-input" id="edit-modal-link-url" placeholder="URL" />
+      </div>
+      <button class="add-btn" style="width:100%;" onclick="addEditLink()">リンクを追加</button>
+      <div id="edit-modal-links" style="margin-top:8px;"></div>
+    </div>
+    <div class="edit-modal-footer">
+      <button class="modal-close" onclick="closeEditModal()">閉じる</button>
+    </div>
+  </div>
+</div>
+
 <script>
 // ── Themes ──
 const THEMES = [
@@ -292,7 +336,7 @@ document.addEventListener('click', () => document.getElementById('theme-btn').cl
 // ============================================================
 //  ★ GAS Web App URL をここに貼り付けてください
 // ============================================================
-const GAS_URL = 'https://script.google.com/macros/s/AKfycbwhsOdGFZpVlml2GSdrJwscQGdsN9gMFOWgcIBsGGysIbmr5_w-fZDeGaipGVnYl-smmA/exec';
+const GAS_URL = 'YOUR_GAS_URL_HERE';
 // ============================================================
 
 let app = { theme:'dark', clients:[], clientTasks:[], todos:[], memoClient:'', memoTodo:'', nextId:1 };
@@ -368,11 +412,20 @@ function loadFromGASJsonp() {
 }
 
 function renderAfterLoad() {
-  document.body.setAttribute('data-theme', app.theme||'dark');
-  initThemeMenu();
-  initMemos();
-  renderClients();
-  renderTodo();
+  try {
+    if (!app || typeof app !== 'object') app = { theme:'dark', clients:[], clientTasks:[], todos:[], memoClient:'', memoTodo:'', nextId:1 };
+    if (!Array.isArray(app.clients))     app.clients = [];
+    if (!Array.isArray(app.clientTasks)) app.clientTasks = [];
+    if (!Array.isArray(app.todos))       app.todos = [];
+    document.body.setAttribute('data-theme', app.theme||'dark');
+    initThemeMenu();
+    initMemos();
+    renderClients();
+    renderTodo();
+    checkDeadlineAlerts();
+  } catch(e) {
+    console.warn('renderAfterLoad error:', e);
+  }
 }
 
 // ── 同期ステータス表示 ──
@@ -437,13 +490,17 @@ function renderClients() {
     const undone=ts.filter(t=>!t.done).length;
     html+=`<div class="group-header"><span class="group-label">${client}</span><span class="group-count">${undone}/${ts.length}</span></div>`;
     ts.forEach(t=>{
+      const clientLinks = (t.links||[]).map((l,i)=>`
+        <a class="task-link-badge" href="${l.url}" target="_blank" rel="noopener">🔗 ${l.label||l.url}</a>`).join('');
       html+=`<div class="task-card ${t.done?'done':''}">
         <div class="task-check" onclick="toggleClient(${t.id})"><span class="check-icon">✓</span></div>
         <div class="task-body">
           <div class="task-text" ondblclick="startEditClient(${t.id},this)">${t.text}</div>
-          ${t.due?dueLabel(t.due):`<input type="date" class="task-date-edit" title="期限を設定" onchange="setClientDue(${t.id},this.value)" />`}
+          ${t.due?dueLabel(t.due):''}
+          ${clientLinks?`<div class="task-links">${clientLinks}</div>`:''}
         </div>
         ${t.priority==='NEXT'?'<span class="priority-next">NEXT</span>':''}
+        <button class="task-link-btn" onclick="openEditModal('client',${t.id})" title="期限・リンク編集">📎</button>
         <button class="task-edit-btn" onclick="startEditClientById(${t.id})">✎</button>
         <button class="task-del" onclick="delClient(${t.id})">✕</button>
       </div>`;
@@ -486,12 +543,16 @@ function renderTodo(){
   if(undone.length){
     html+=`<div class="group-header"><span class="group-label">未完了</span><span class="group-count">${undone.length}</span></div>`;
     undone.forEach(t=>{
+      const todoLinks = (t.links||[]).map((l,i)=>`
+        <a class="task-link-badge" href="${l.url}" target="_blank" rel="noopener">🔗 ${l.label||l.url}</a>`).join('');
       html+=`<div class="task-card">
         <div class="task-check" onclick="toggleTodo(${t.id})"><span class="check-icon">✓</span></div>
         <div class="task-body">
           <div class="task-text" ondblclick="startEditTodo(${t.id},this)">${t.text}</div>
-          ${t.due?dueLabel(t.due):`<input type="date" class="task-date-edit" title="期限を設定" onchange="setTodoDue(${t.id},this.value)" />`}
+          ${t.due?dueLabel(t.due):''}
+          ${todoLinks?`<div class="task-links">${todoLinks}</div>`:''}
         </div>
+        <button class="task-link-btn" onclick="openEditModal('todo',${t.id})" title="期限・リンク編集">📎</button>
         <button class="task-edit-btn" onclick="startEditTodoById(${t.id})">✎</button>
         <button class="task-del" onclick="delTodo(${t.id})">✕</button>
       </div>`;
@@ -610,7 +671,108 @@ function startEditTodoById(id) {
   if(el) startEditTodo(id, el);
 }
 
-// ── 日付後付け設定 ──
+// ── 期限・リンク編集モーダル ──
+let _editType = null, _editId = null;
+
+function openEditModal(type, id) {
+  _editType = type;
+  _editId   = id;
+  const t = type==='client'
+    ? app.clientTasks.find(x=>x.id===id)
+    : app.todos.find(x=>x.id===id);
+  if(!t) return;
+  document.getElementById('edit-modal-title').textContent = t.text.length>20 ? t.text.slice(0,20)+'…' : t.text;
+  document.getElementById('edit-modal-date').value = t.due || '';
+  renderEditLinks(t.links||[]);
+  document.getElementById('edit-modal').classList.add('open');
+}
+
+function closeEditModal() {
+  document.getElementById('edit-modal').classList.remove('open');
+  _editType = null; _editId = null;
+}
+
+function getEditTask() {
+  if(!_editType||!_editId) return null;
+  return _editType==='client'
+    ? app.clientTasks.find(x=>x.id===_editId)
+    : app.todos.find(x=>x.id===_editId);
+}
+
+function saveEditDue() {
+  const t = getEditTask(); if(!t) return;
+  t.due = document.getElementById('edit-modal-date').value;
+  save();
+  _editType==='client' ? renderClients() : renderTodo();
+  closeEditModal();
+}
+
+function clearEditDue() {
+  const t = getEditTask(); if(!t) return;
+  t.due = '';
+  save();
+  _editType==='client' ? renderClients() : renderTodo();
+  closeEditModal();
+}
+
+function addEditLink() {
+  const t = getEditTask(); if(!t) return;
+  const label = document.getElementById('edit-modal-link-label').value.trim();
+  const url   = document.getElementById('edit-modal-link-url').value.trim();
+  if(!url) return;
+  if(!t.links) t.links = [];
+  t.links.push({ label: label||url, url });
+  document.getElementById('edit-modal-link-label').value = '';
+  document.getElementById('edit-modal-link-url').value   = '';
+  save();
+  renderEditLinks(t.links);
+  _editType==='client' ? renderClients() : renderTodo();
+}
+
+function delEditLink(idx) {
+  const t = getEditTask(); if(!t||!t.links) return;
+  t.links.splice(idx, 1);
+  save();
+  renderEditLinks(t.links);
+  _editType==='client' ? renderClients() : renderTodo();
+}
+
+function renderEditLinks(links) {
+  document.getElementById('edit-modal-links').innerHTML = (links||[]).map((l,i)=>`
+    <div style="display:flex;align-items:center;gap:6px;padding:4px 0;font-size:12px;">
+      <a href="${l.url}" target="_blank" rel="noopener" style="color:var(--accent);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">🔗 ${l.label}</a>
+      <button class="task-link-del" onclick="delEditLink(${i})">✕</button>
+    </div>`).join('') || '<div style="font-size:11px;color:var(--text-muted);">リンクなし</div>';
+}
+
+// ── アラートチェック（起動時）──
+function checkDeadlineAlerts() {
+  try {
+    const clientTasks = Array.isArray(app.clientTasks) ? app.clientTasks : [];
+    const todos       = Array.isArray(app.todos)       ? app.todos       : [];
+    const all = [...clientTasks, ...todos].filter(t => t && !t.done && t.due && typeof t.due === 'string');
+    const alerts = all.filter(t => {
+      try { const d = daysLeft(t.due); return d !== null && d <= 1; }
+      catch(e) { return false; }
+    });
+    if (!alerts.length) return;
+    const msgs = alerts.map(t => {
+      const d = daysLeft(t.due);
+      const label = d < 0 ? String(Math.abs(d)) + '日超過' : d === 0 ? '今日が期限' : '明日が期限';
+      return '・' + (t.text||'').slice(0,30) + '（' + label + '）';
+    });
+    setTimeout(() => {
+      alert('⏰ 期限アラート
+
+' + msgs.join('
+'));
+    }, 800);
+  } catch(e) {
+    console.warn('checkDeadlineAlerts error:', e);
+  }
+}
+
+// ── 日付後付け設定（後方互換）──
 function setClientDue(id, val) {
   const t = app.clientTasks.find(x=>x.id===id);
   if(t){ t.due=val; save(); renderClients(); }
