@@ -292,7 +292,7 @@ document.addEventListener('click', () => document.getElementById('theme-btn').cl
 // ============================================================
 //  ★ GAS Web App URL をここに貼り付けてください
 // ============================================================
-const GAS_URL = 'https://script.google.com/macros/s/AKfycbwhsOdGFZpVlml2GSdrJwscQGdsN9gMFOWgcIBsGGysIbmr5_w-fZDeGaipGVnYl-smmA/execS';
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbwhsOdGFZpVlml2GSdrJwscQGdsN9gMFOWgcIBsGGysIbmr5_w-fZDeGaipGVnYl-smmA/exec';
 // ============================================================
 
 let app = { theme:'dark', clients:[], clientTasks:[], todos:[], memoClient:'', memoTodo:'', nextId:1 };
@@ -311,15 +311,13 @@ function save() {
 }
 
 async function syncToGAS() {
-  if (!GAS_URL || GAS_URL === 'https://script.google.com/macros/s/AKfycbwhsOdGFZpVlml2GSdrJwscQGdsN9gMFOWgcIBsGGysIbmr5_w-fZDeGaipGVnYl-smmA/execS') return;
+  if (!GAS_URL || GAS_URL === 'YOUR_GAS_URL_HERE') return;
   setStatus('saving');
   try {
-    // no-cors で送信（iPhoneホーム画面PWA対応）
-    await fetch(GAS_URL, {
-      method: 'POST',
-      mode: 'no-cors',
-      body: JSON.stringify({ data: app }),
-    });
+    // GETパラメータでデータ送信（CORSを回避）
+    const payload = encodeURIComponent(JSON.stringify(app));
+    const url = GAS_URL + '?action=save&data=' + payload;
+    const res = await fetch(url, { method:'GET', mode:'no-cors' });
     setStatus('saved');
   } catch(e) { setStatus('error'); }
 }
@@ -332,21 +330,49 @@ async function loadFromGAS() {
   }
   setStatus('loading');
   try {
-    // GASはリダイレクトするのでmanual→opaqueになる → jsonが読めない
-    // → no-corsでGETして失敗したらキャッシュにフォールバック、
-    //   代わりにGETはcorsモードを試みてダメならキャッシュ
-    const res = await fetch(GAS_URL + '?t=' + Date.now(), {
-      method: 'GET',
-      mode: 'cors',
-      credentials: 'omit',
-    });
-    const json = await res.json();
-    if (json.ok && json.data) { app = json.data; saveCache(app); setStatus('synced'); }
-    else throw new Error();
+    const url = GAS_URL + '?action=load&t=' + Date.now();
+    const res = await fetch(url, { method:'GET', mode:'no-cors' });
+    // no-corsではレスポンスが読めないのでscriptタグ経由で取得
+    throw new Error('use jsonp');
   } catch(e) {
+    // JSONPで読み込み
+    loadFromGASJsonp();
+  }
+}
+
+function loadFromGASJsonp() {
+  setStatus('loading');
+  const cb = 'gasCallback_' + Date.now();
+  window[cb] = function(json) {
+    try {
+      if (json.ok && json.data) { app = json.data; saveCache(app); setStatus('synced'); }
+      else throw new Error();
+    } catch(e) {
+      app = loadCache() || app;
+      setStatus('offline');
+    }
+    renderAfterLoad();
+    delete window[cb];
+    document.getElementById('gas-script')?.remove();
+  };
+  const s = document.createElement('script');
+  s.id = 'gas-script';
+  s.src = GAS_URL + '?action=load&callback=' + cb + '&t=' + Date.now();
+  s.onerror = () => {
     app = loadCache() || app;
     setStatus('offline');
-  }
+    renderAfterLoad();
+    delete window[cb];
+  };
+  document.head.appendChild(s);
+}
+
+function renderAfterLoad() {
+  document.body.setAttribute('data-theme', app.theme||'dark');
+  initThemeMenu();
+  initMemos();
+  renderClients();
+  renderTodo();
 }
 
 // ── 同期ステータス表示 ──
@@ -602,11 +628,7 @@ function printPDF() {
 // ── Init ──
 async function init() {
   await loadFromGAS();
-  document.body.setAttribute('data-theme', app.theme||'dark');
-  initThemeMenu();
-  initMemos();
-  renderClients();
-  renderTodo();
+  // renderAfterLoad が呼ばれなかった場合のフォールバック
 }
 init();
 </script>
