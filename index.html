@@ -336,7 +336,7 @@ document.addEventListener('click', () => document.getElementById('theme-btn').cl
 // ============================================================
 //  ★ GAS Web App URL をここに貼り付けてください
 // ============================================================
-const GAS_URL = 'https://script.google.com/macros/s/AKfycbwhsOdGFZpVlml2GSdrJwscQGdsN9gMFOWgcIBsGGysIbmr5_w-fZDeGaipGVnYl-smmA/exec';
+const GAS_URL = 'YOUR_GAS_URL_HERE';
 // ============================================================
 
 let app = { theme:'dark', clients:[], clientTasks:[], todos:[], memoClient:'', memoTodo:'', nextId:1 };
@@ -776,10 +776,7 @@ function checkDeadlineAlerts() {
       return '・' + (t.text||'').slice(0,30) + '（' + label + '）';
     });
     setTimeout(() => {
-      alert('⏰ 期限アラート
-
-' + msgs.join('
-'));
+      alert('⏰ 期限アラート\n\n' + msgs.join('\n'));
     }, 800);
   } catch(e) {
     console.warn('checkDeadlineAlerts error:', e);
