@@ -144,10 +144,10 @@
   .task-date-edit { font-size:11px; color:var(--text-muted); background:none; border:none; border-bottom:1px dashed var(--border); cursor:pointer; padding:0; font-family:'JetBrains Mono',monospace; margin-top:3px; display:inline-block; }
   .task-date-edit:hover { color:var(--accent); border-bottom-color:var(--accent); }
   .task-text-edit { width:100%; background:var(--surface2); border:1px solid var(--accent); border-radius:4px; padding:4px 8px; color:var(--text); font-family:'Noto Sans JP',sans-serif; font-size:13px; outline:none; margin-bottom:2px; }
-  .task-edit-btn { font-size:10px; background:none; border:none; color:var(--text-muted); cursor:pointer; padding:0 2px; opacity:0; transition:opacity .15s,color .15s; }
+  .task-edit-btn { font-size:10px; background:none; border:none; color:var(--text-muted); cursor:pointer; padding:0 2px; opacity:.4; transition:opacity .15s,color .15s; }
   .task-card:hover .task-edit-btn { opacity:1; }
   .task-edit-btn:hover { color:var(--accent); }
-  .task-link-btn { font-size:11px; background:none; border:none; color:var(--text-muted); cursor:pointer; padding:0 2px; opacity:0; transition:opacity .15s,color .15s; }
+  .task-link-btn { font-size:11px; background:none; border:none; color:var(--text-muted); cursor:pointer; padding:0 2px; opacity:.4; transition:opacity .15s,color .15s; }
   .task-card:hover .task-link-btn { opacity:1; }
   .task-link-btn:hover { color:var(--accent2); }
   .task-links { display:flex; flex-wrap:wrap; gap:5px; margin-top:4px; }
@@ -336,7 +336,7 @@ document.addEventListener('click', () => document.getElementById('theme-btn').cl
 // ============================================================
 //  ★ GAS Web App URL をここに貼り付けてください
 // ============================================================
-const GAS_URL = 'https://script.google.com/macros/s/AKfycbwhsOdGFZpVlml2GSdrJwscQGdsN9gMFOWgcIBsGGysIbmr5_w-fZDeGaipGVnYl-smmA/execYOUR_GAS_URL_HERE';
+const GAS_URL = 'YOUR_GAS_URL_HERE';
 // ============================================================
 
 let app = { theme:'dark', clients:[], clientTasks:[], todos:[], memoClient:'', memoTodo:'', nextId:1 };
@@ -387,7 +387,20 @@ async function loadFromGAS() {
 function loadFromGASJsonp() {
   setStatus('loading');
   const cb = 'gasCallback_' + Date.now();
+
+  // タイムアウト：5秒でキャッシュにフォールバック
+  const timer = setTimeout(() => {
+    if (window[cb]) {
+      delete window[cb];
+      document.getElementById('gas-script')?.remove();
+      app = loadCache() || app;
+      setStatus('offline');
+      renderAfterLoad();
+    }
+  }, 5000);
+
   window[cb] = function(json) {
+    clearTimeout(timer);
     try {
       if (json.ok && json.data) { app = json.data; saveCache(app); setStatus('synced'); }
       else throw new Error();
@@ -403,6 +416,7 @@ function loadFromGASJsonp() {
   s.id = 'gas-script';
   s.src = GAS_URL + '?action=load&callback=' + cb + '&t=' + Date.now();
   s.onerror = () => {
+    clearTimeout(timer);
     app = loadCache() || app;
     setStatus('offline');
     renderAfterLoad();
