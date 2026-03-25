@@ -366,29 +366,22 @@ async function syncToGAS() {
   } catch(e) { setStatus('error'); }
 }
 
-// ── 起動時にGASから読み込み ──
+// ── 起動時にGASから読み込み（常にGAS優先、キャッシュはフォールバックのみ）──
 async function loadFromGAS() {
   if (!GAS_URL || GAS_URL === 'YOUR_GAS_URL_HERE') {
     app = loadCache() || app;
+    renderAfterLoad();
     return;
   }
-  setStatus('loading');
-  try {
-    const url = GAS_URL + '?action=load&t=' + Date.now();
-    const res = await fetch(url, { method:'GET', mode:'no-cors' });
-    // no-corsではレスポンスが読めないのでscriptタグ経由で取得
-    throw new Error('use jsonp');
-  } catch(e) {
-    // JSONPで読み込み
-    loadFromGASJsonp();
-  }
+  // キャッシュは使わずGASから直接取得
+  loadFromGASJsonp();
 }
 
 function loadFromGASJsonp() {
   setStatus('loading');
   const cb = 'gasCallback_' + Date.now();
 
-  // タイムアウト：5秒でキャッシュにフォールバック
+  // タイムアウト：10秒でキャッシュにフォールバック（モバイル回線対応）
   const timer = setTimeout(() => {
     if (window[cb]) {
       delete window[cb];
@@ -397,7 +390,7 @@ function loadFromGASJsonp() {
       setStatus('offline');
       renderAfterLoad();
     }
-  }, 5000);
+  }, 10000);
 
   window[cb] = function(json) {
     clearTimeout(timer);
