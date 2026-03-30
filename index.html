@@ -693,7 +693,6 @@ function renderClients() {
   const tasks=app.clientTasks, done=tasks.filter(t=>t.done).length;
   document.getElementById('stats-client').innerHTML=`
     <div class="stat"><span class="stat-num sn-blue">${tasks.length-done}</span> 残タスク</div>
-    <div class="stat"><span class="stat-num sn-green">${done}</span> 完了</div>
     <div class="stat"><span class="stat-num sn-orange">${app.clients.length}</span> 企業</div>`;
 
   const groups={};
@@ -702,10 +701,10 @@ function renderClients() {
 
   let html='';
   for(const [client,ts] of Object.entries(groups)){
-    if(!ts.length) continue;
-    const undone=ts.filter(t=>!t.done).length;
-    html+=`<div class="group-header"><span class="group-label">${client}</span><span class="group-count">${undone}/${ts.length}</span></div>`;
-    ts.forEach(t=>{
+    const undone=ts.filter(t=>!t.done);
+    if(!undone.length) continue;
+    html+=`<div class="group-header"><span class="group-label">${client}</span><span class="group-count">${undone.length}</span></div>`;
+    undone.forEach(t=>{
       const clientLinks = (t.links||[]).map((l,i)=>`
         <a class="task-link-badge" href="${l.url}" target="_blank" rel="noopener">🔗 ${l.label||l.url}</a>`).join('');
       html+=`<div class="task-card ${t.done?'done':''}">
@@ -781,16 +780,7 @@ function renderTodo(){
       </div>`;
     });
   }
-  if(doneList.length){
-    html+=`<div class="group-header" style="margin-top:18px;"><span class="group-label">完了済み</span><span class="group-count">${doneList.length}</span></div>`;
-    doneList.forEach(t=>{
-      html+=`<div class="task-card done">
-        <div class="task-check" onclick="toggleTodo(${t.id})"><span class="check-icon">✓</span></div>
-        <div class="task-body"><div class="task-text">${t.text}</div></div>
-        <button class="task-del" onclick="delTodo(${t.id})">✕</button>
-      </div>`;
-    });
-  }
+  // 完了タスクは下部ドロワーに表示するためここでは非表示
   document.getElementById('todo-list').innerHTML=html||'<div class="empty">ToDoがありません</div>';
 }
 
