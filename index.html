@@ -71,7 +71,7 @@
   .theme-swatch { width:12px; height:12px; border-radius:50%; flex-shrink:0; }
 
   /* ── Main ── */
-  main { padding:14px 16px; max-width:720px; margin:0 auto; }
+  main { padding:14px 16px 80px; max-width:720px; margin:0 auto; }
   .section { display:none; }
   .section.active { display:block; }
 
@@ -196,6 +196,33 @@
   .minutes-modal .add-input { width:100%; }
   .minutes-modal textarea.add-input { resize:vertical; }
   .minutes-modal-footer { display:flex; justify-content:flex-end; gap:8px; }
+
+  /* 完了タスク一覧 */
+  .done-drawer { position:fixed; bottom:0; left:0; right:0; z-index:150; }
+  .done-drawer-tab {
+    display:flex; align-items:center; justify-content:center; gap:8px;
+    background:var(--surface2); border-top:1px solid var(--border);
+    padding:10px 16px; cursor:pointer; font-size:12px; color:var(--text-dim);
+    transition:background .2s,color .2s;
+  }
+  .done-drawer-tab:hover { background:var(--surface); color:var(--text); }
+  .done-drawer-tab .done-count { font-family:'JetBrains Mono',monospace; font-weight:700; font-size:13px; color:var(--accent3); }
+  .done-drawer-panel {
+    display:none; background:var(--surface);
+    border-top:1px solid var(--border);
+    max-height:55vh; overflow-y:auto;
+  }
+  .done-drawer.open .done-drawer-panel { display:block; }
+  .done-drawer.open .done-chevron { transform:rotate(180deg); }
+  .done-chevron { transition:transform .2s; font-size:11px; }
+  .done-table { width:100%; border-collapse:collapse; font-size:12px; }
+  .done-table th { background:var(--surface2); color:var(--text-muted); font-size:10px; font-weight:700; letter-spacing:.08em; padding:8px 12px; text-align:left; border-bottom:1px solid var(--border); position:sticky; top:0; }
+  .done-table td { padding:9px 12px; border-bottom:1px solid var(--border); vertical-align:middle; line-height:1.4; }
+  .done-table tr:last-child td { border-bottom:none; }
+  .done-table tr:hover td { background:var(--surface2); }
+  .done-client-badge { font-size:10px; color:var(--accent2); font-weight:700; }
+  .done-restore-btn { background:none; border:none; color:var(--text-muted); font-size:11px; cursor:pointer; padding:0 4px; }
+  .done-restore-btn:hover { color:var(--accent); }
 
   @media print {
     .topbar,.add-area,.task-check,.task-del,.pdf-btn,.memo-box { display:none !important; }
@@ -601,6 +628,7 @@ function renderAfterLoad() {
     renderClients();
     renderTodo();
     renderMinutes();
+    renderDoneDrawer();
     checkDeadlineAlerts();
   } catch(e) {
     console.warn('renderAfterLoad error:', e);
@@ -697,7 +725,14 @@ function renderClients() {
   document.getElementById('client-list').innerHTML=html||'<div class="empty">タスクがありません</div>';
 }
 
-function toggleClient(id){ const t=app.clientTasks.find(x=>x.id===id); if(t){t.done=!t.done;save();renderClients();} }
+function toggleClient(id){
+  const t=app.clientTasks.find(x=>x.id===id);
+  if(t){
+    t.done=!t.done;
+    t.doneAt = t.done ? todayStr() : '';
+    save(); renderClients(); renderDoneDrawer();
+  }
+}
 function delClient(id){ app.clientTasks=app.clientTasks.filter(x=>x.id!==id); save();renderClients(); }
 function addClientTask(){
   const client=document.getElementById('client-sel').value;
@@ -759,7 +794,14 @@ function renderTodo(){
   document.getElementById('todo-list').innerHTML=html||'<div class="empty">ToDoがありません</div>';
 }
 
-function toggleTodo(id){ const t=app.todos.find(x=>x.id===id); if(t){t.done=!t.done;save();renderTodo();} }
+function toggleTodo(id){
+  const t=app.todos.find(x=>x.id===id);
+  if(t){
+    t.done=!t.done;
+    t.doneAt = t.done ? todayStr() : '';
+    save(); renderTodo(); renderDoneDrawer();
+  }
+}
 function delTodo(id){ app.todos=app.todos.filter(x=>x.id!==id); save();renderTodo(); }
 function addTodo(){
   const text=document.getElementById('todo-input').value.trim();
@@ -982,6 +1024,49 @@ function updateDatetime() {
 }
 updateDatetime();
 
+// ── 完了タスクドロワー ──
+function renderDoneDrawer() {
+  const doneClients = (app.clientTasks||[]).filter(t=>t.done);
+  const doneTodos   = (app.todos||[]).filter(t=>t.done);
+  const total = doneClients.length + doneTodos.length;
+  document.getElementById('done-total').textContent = total;
+
+  // 日付降順でソート
+  const all = [
+    ...doneClients.map(t=>({ doneAt:t.doneAt||'', type:'client', client:t.client, text:t.text, id:t.id })),
+    ...doneTodos.map(t=>({ doneAt:t.doneAt||'', type:'todo', client:'ToDo', text:t.text, id:t.id })),
+  ].sort((a,b)=> b.doneAt.localeCompare(a.doneAt));
+
+  const tbody = document.getElementById('done-table-body');
+  if(!tbody) return;
+  if(!all.length){
+    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--text-muted);padding:20px;">完了タスクがありません</td></tr>';
+    return;
+  }
+  tbody.innerHTML = all.map(t=>`
+    <tr>
+      <td style="white-space:nowrap;font-family:'JetBrains Mono',monospace;color:var(--text-muted);">${t.doneAt||'—'}</td>
+      <td><span class="done-client-badge">${t.client}</span></td>
+      <td style="color:var(--text-dim);text-decoration:line-through;">${t.text}</td>
+      <td><button class="done-restore-btn" onclick="restoreTask('${t.type}',${t.id})" title="未完了に戻す">↩</button></td>
+    </tr>`).join('');
+}
+
+function toggleDoneDrawer() {
+  document.getElementById('done-drawer').classList.toggle('open');
+}
+
+function restoreTask(type, id) {
+  if(type==='client'){
+    const t=app.clientTasks.find(x=>x.id===id);
+    if(t){ t.done=false; t.doneAt=''; save(); renderClients(); }
+  } else {
+    const t=app.todos.find(x=>x.id===id);
+    if(t){ t.done=false; t.doneAt=''; save(); renderTodo(); }
+  }
+  renderDoneDrawer();
+}
+
 // ── Init ──
 async function init() {
   await loadFromGAS();
@@ -989,5 +1074,27 @@ async function init() {
 }
 init();
 </script>
+<!-- 完了タスク一覧ドロワー -->
+<div class="done-drawer" id="done-drawer">
+  <div class="done-drawer-tab" onclick="toggleDoneDrawer()">
+    <span class="done-chevron">▲</span>
+    <span>完了タスク一覧</span>
+    <span class="done-count" id="done-total">0</span>
+    <span style="color:var(--text-muted);">件</span>
+  </div>
+  <div class="done-drawer-panel">
+    <table class="done-table">
+      <thead>
+        <tr>
+          <th>完了日</th>
+          <th>クライアント / 種別</th>
+          <th>タスク名</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="done-table-body"></tbody>
+    </table>
+  </div>
+</div>
 </body>
 </html>
