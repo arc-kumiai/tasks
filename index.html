@@ -168,21 +168,26 @@
   .pdf-btn { background:none; border:1px solid var(--border); border-radius:var(--radius-sm); padding:5px 11px; font-size:11px; color:var(--text-muted); cursor:pointer; display:flex; align-items:center; gap:5px; transition:all .2s; white-space:nowrap; }
   .pdf-btn:hover { border-color:var(--accent); color:var(--accent); }
   /* 議事録 */
-  .minutes-card { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:14px; margin-bottom:10px; transition:border-color .15s; }
-  .minutes-card:hover { border-color:rgba(var(--accent-rgb),.35); }
-  .minutes-header { display:flex; align-items:center; gap:10px; margin-bottom:10px; }
+  .minutes-card { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:14px; margin-bottom:8px; transition:border-color .15s,background .15s; cursor:pointer; }
+  .minutes-card:hover { border-color:rgba(var(--accent-rgb),.35); background:var(--surface2); }
+  .minutes-header { display:flex; align-items:center; gap:10px; }
   .minutes-date-badge { font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--accent); background:rgba(var(--accent-rgb),.12); padding:2px 8px; border-radius:4px; flex-shrink:0; }
   .minutes-title { font-size:14px; font-weight:700; flex:1; }
+  .minutes-chevron { font-size:11px; color:var(--text-muted); transition:transform .2s; flex-shrink:0; }
+  .minutes-card.open .minutes-chevron { transform:rotate(90deg); }
+  .minutes-tasks-preview { font-size:12px; color:var(--accent2); margin-top:6px; white-space:pre-wrap; word-break:break-all; line-height:1.5; }
+  .minutes-detail { display:none; margin-top:12px; border-top:1px solid var(--border); padding-top:12px; }
+  .minutes-card.open .minutes-detail { display:block; }
   .minutes-section-label { font-size:10px; font-weight:700; letter-spacing:.1em; color:var(--text-muted); margin-bottom:4px; margin-top:10px; }
+  .minutes-section-label:first-child { margin-top:0; }
   .minutes-body { font-size:13px; line-height:1.7; color:var(--text-dim); white-space:pre-wrap; word-break:break-all; }
-  .minutes-tasks { font-size:13px; line-height:1.7; color:var(--accent2); white-space:pre-wrap; word-break:break-all; }
-  .minutes-footer { display:flex; justify-content:flex-end; gap:6px; margin-top:10px; }
+  .minutes-tasks-full { font-size:13px; line-height:1.7; color:var(--accent2); white-space:pre-wrap; word-break:break-all; }
+  .minutes-footer { display:flex; justify-content:flex-end; gap:6px; margin-top:12px; }
   .minutes-edit-btn { font-size:11px; background:none; border:1px solid var(--border); border-radius:4px; color:var(--text-muted); padding:3px 10px; cursor:pointer; }
   .minutes-edit-btn:hover { color:var(--accent); border-color:var(--accent); }
   .minutes-del-btn { font-size:11px; background:none; border:1px solid var(--border); border-radius:4px; color:var(--text-muted); padding:3px 10px; cursor:pointer; }
   .minutes-del-btn:hover { color:var(--accent4); border-color:var(--accent4); }
-  /* 編集モード */
-  .minutes-card.editing { border-color:var(--accent); }
+  .minutes-card.editing { border-color:var(--accent); cursor:default; }
 
   @media print {
     .topbar,.add-area,.task-check,.task-del,.pdf-btn,.memo-box { display:none !important; }
@@ -470,19 +475,33 @@ function renderMinutes() {
   if (!list) return;
   const mins = (app.minutes||[]).slice().sort((a,b)=> b.date.localeCompare(a.date));
   if (!mins.length) { list.innerHTML='<div class="empty">議事録がありません</div>'; return; }
-  list.innerHTML = mins.map(m => `
-    <div class="minutes-card" id="mc-${m.id}">
+  list.innerHTML = mins.map(m => {
+    const tasksPreview = m.tasks ? m.tasks.split('\n').slice(0,2).join('\n') + (m.tasks.split('\n').length>2?'…':'') : '';
+    return `
+    <div class="minutes-card" id="mc-${m.id}" onclick="toggleMinutes(${m.id},event)">
       <div class="minutes-header">
-        <span class="minutes-date-badge">${m.date}</span>
+        <span class="minutes-date-badge">${m.date||'日付なし'}</span>
         <span class="minutes-title">${m.title||'（タイトルなし）'}</span>
+        <span class="minutes-chevron">▶</span>
       </div>
-      ${m.body ? `<div class="minutes-section-label">📝 内容</div><div class="minutes-body">${m.body}</div>` : ''}
-      ${m.tasks ? `<div class="minutes-section-label">✅ 次回までのタスク</div><div class="minutes-tasks">${m.tasks}</div>` : ''}
-      <div class="minutes-footer">
-        <button class="minutes-edit-btn" onclick="editMinutes(${m.id})">✎ 編集</button>
-        <button class="minutes-del-btn" onclick="delMinutes(${m.id})">✕ 削除</button>
+      ${tasksPreview ? `<div class="minutes-tasks-preview">✅ ${tasksPreview}</div>` : ''}
+      <div class="minutes-detail">
+        ${m.body ? `<div class="minutes-section-label">📝 内容</div><div class="minutes-body">${m.body}</div>` : ''}
+        ${m.tasks ? `<div class="minutes-section-label">✅ 次回までのタスク</div><div class="minutes-tasks-full">${m.tasks}</div>` : ''}
+        <div class="minutes-footer">
+          <button class="minutes-edit-btn" onclick="editMinutes(${m.id});event.stopPropagation()">✎ 編集</button>
+          <button class="minutes-del-btn" onclick="delMinutes(${m.id});event.stopPropagation()">✕ 削除</button>
+        </div>
       </div>
-    </div>`).join('');
+    </div>`;
+  }).join('');
+}
+
+function toggleMinutes(id, e) {
+  if(e.target.closest('.minutes-edit-btn,.minutes-del-btn,.add-input')) return;
+  const card = document.getElementById('mc-' + id);
+  if(!card || card.classList.contains('editing')) return;
+  card.classList.toggle('open');
 }
 
 function addMinutes() {
