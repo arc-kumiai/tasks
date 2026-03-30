@@ -167,6 +167,23 @@
   /* PDF出力ボタン */
   .pdf-btn { background:none; border:1px solid var(--border); border-radius:var(--radius-sm); padding:5px 11px; font-size:11px; color:var(--text-muted); cursor:pointer; display:flex; align-items:center; gap:5px; transition:all .2s; white-space:nowrap; }
   .pdf-btn:hover { border-color:var(--accent); color:var(--accent); }
+  /* 議事録 */
+  .minutes-card { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:14px; margin-bottom:10px; transition:border-color .15s; }
+  .minutes-card:hover { border-color:rgba(var(--accent-rgb),.35); }
+  .minutes-header { display:flex; align-items:center; gap:10px; margin-bottom:10px; }
+  .minutes-date-badge { font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--accent); background:rgba(var(--accent-rgb),.12); padding:2px 8px; border-radius:4px; flex-shrink:0; }
+  .minutes-title { font-size:14px; font-weight:700; flex:1; }
+  .minutes-section-label { font-size:10px; font-weight:700; letter-spacing:.1em; color:var(--text-muted); margin-bottom:4px; margin-top:10px; }
+  .minutes-body { font-size:13px; line-height:1.7; color:var(--text-dim); white-space:pre-wrap; word-break:break-all; }
+  .minutes-tasks { font-size:13px; line-height:1.7; color:var(--accent2); white-space:pre-wrap; word-break:break-all; }
+  .minutes-footer { display:flex; justify-content:flex-end; gap:6px; margin-top:10px; }
+  .minutes-edit-btn { font-size:11px; background:none; border:1px solid var(--border); border-radius:4px; color:var(--text-muted); padding:3px 10px; cursor:pointer; }
+  .minutes-edit-btn:hover { color:var(--accent); border-color:var(--accent); }
+  .minutes-del-btn { font-size:11px; background:none; border:1px solid var(--border); border-radius:4px; color:var(--text-muted); padding:3px 10px; cursor:pointer; }
+  .minutes-del-btn:hover { color:var(--accent4); border-color:var(--accent4); }
+  /* 編集モード */
+  .minutes-card.editing { border-color:var(--accent); }
+
   @media print {
     .topbar,.add-area,.task-check,.task-del,.pdf-btn,.memo-box { display:none !important; }
     .task-card { border:1px solid #ccc; break-inside:avoid; }
@@ -201,7 +218,9 @@
   <div class="tabs">
     <div class="tab active" id="tab-client" onclick="showTab('client')">クライアント別</div>
     <div class="tab" id="tab-todo" onclick="showTab('todo')">ToDo</div>
+    <div class="tab" id="tab-minutes" onclick="showTab('minutes')">議事録</div>
   </div>
+  <div id="datetime-display" style="display:flex;flex-direction:column;align-items:flex-end;justify-content:center;padding:0 10px;border-left:1px solid var(--border);white-space:nowrap;"></div>
   <div id="sync-status" style="display:flex;align-items:center;padding:0 10px;border-left:1px solid var(--border);min-width:72px;"></div>
   <button class="pdf-btn" onclick="printPDF()" style="margin:0 8px;">🖨 PDF</button>
   <div class="theme-btn" id="theme-btn" onclick="toggleThemeMenu(event)">
@@ -252,6 +271,28 @@
       </div>
     </div>
     <div id="todo-list"></div>
+  </div>
+  <!-- ── 議事録 ── -->
+  <div class="section" id="sec-minutes">
+    <div class="memo-box">
+      <textarea class="memo-textarea" id="memo-minutes" placeholder="メモ・共有事項…"></textarea>
+    </div>
+    <div class="add-area">
+      <div class="add-row">
+        <input class="add-input" id="minutes-title" placeholder="タイトル（例：高野土建 打合せ）" />
+        <input class="add-input" type="date" id="minutes-date" style="max-width:160px;" />
+      </div>
+      <div class="add-row">
+        <textarea class="add-input" id="minutes-body" placeholder="内容…" style="min-height:80px;resize:vertical;"></textarea>
+      </div>
+      <div class="add-row">
+        <textarea class="add-input" id="minutes-tasks" placeholder="次回までのタスク…" style="min-height:50px;resize:vertical;"></textarea>
+      </div>
+      <div class="add-row">
+        <button class="add-btn" style="width:100%;" onclick="addMinutes()">議事録を追加</button>
+      </div>
+    </div>
+    <div id="minutes-list"></div>
   </div>
 </main>
 
@@ -339,7 +380,7 @@ document.addEventListener('click', () => document.getElementById('theme-btn').cl
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbwhsOdGFZpVlml2GSdrJwscQGdsN9gMFOWgcIBsGGysIbmr5_w-fZDeGaipGVnYl-smmA/exec';
 // ============================================================
 
-let app = { theme:'dark', clients:[], clientTasks:[], todos:[], memoClient:'', memoTodo:'', nextId:1 };
+let app = { theme:'dark', clients:[], clientTasks:[], todos:[], minutes:[], memoClient:'', memoTodo:'', memoMinutes:'', nextId:1 };
 
 // ── キャッシュ（オフライン時フォールバック）──
 const CACHE_KEY = 'arc_v3_cache';
@@ -423,9 +464,85 @@ function loadFromGASJsonp() {
   document.head.appendChild(s);
 }
 
+// ── 議事録 ──
+function renderMinutes() {
+  const list = document.getElementById('minutes-list');
+  if (!list) return;
+  const mins = (app.minutes||[]).slice().sort((a,b)=> b.date.localeCompare(a.date));
+  if (!mins.length) { list.innerHTML='<div class="empty">議事録がありません</div>'; return; }
+  list.innerHTML = mins.map(m => `
+    <div class="minutes-card" id="mc-${m.id}">
+      <div class="minutes-header">
+        <span class="minutes-date-badge">${m.date}</span>
+        <span class="minutes-title">${m.title||'（タイトルなし）'}</span>
+      </div>
+      ${m.body ? `<div class="minutes-section-label">📝 内容</div><div class="minutes-body">${m.body}</div>` : ''}
+      ${m.tasks ? `<div class="minutes-section-label">✅ 次回までのタスク</div><div class="minutes-tasks">${m.tasks}</div>` : ''}
+      <div class="minutes-footer">
+        <button class="minutes-edit-btn" onclick="editMinutes(${m.id})">✎ 編集</button>
+        <button class="minutes-del-btn" onclick="delMinutes(${m.id})">✕ 削除</button>
+      </div>
+    </div>`).join('');
+}
+
+function addMinutes() {
+  const title = document.getElementById('minutes-title').value.trim();
+  const date  = document.getElementById('minutes-date').value;
+  const body  = document.getElementById('minutes-body').value.trim();
+  const tasks = document.getElementById('minutes-tasks').value.trim();
+  if (!title && !body) { document.getElementById('minutes-title').focus(); return; }
+  if (!app.minutes) app.minutes = [];
+  app.minutes.push({ id: app.nextId++, title, date, body, tasks });
+  document.getElementById('minutes-title').value = '';
+  document.getElementById('minutes-date').value  = '';
+  document.getElementById('minutes-body').value  = '';
+  document.getElementById('minutes-tasks').value = '';
+  save(); renderMinutes();
+}
+
+function delMinutes(id) {
+  if (!confirm('この議事録を削除しますか？')) return;
+  app.minutes = app.minutes.filter(m => m.id !== id);
+  save(); renderMinutes();
+}
+
+function editMinutes(id) {
+  const m = (app.minutes||[]).find(x => x.id === id);
+  if (!m) return;
+  const card = document.getElementById('mc-' + id);
+  if (!card) return;
+  card.classList.add('editing');
+  card.innerHTML = `
+    <div class="add-row" style="margin-bottom:8px;">
+      <input class="add-input" id="edit-min-title-${id}" value="${m.title||''}" placeholder="タイトル" />
+      <input class="add-input" type="date" id="edit-min-date-${id}" value="${m.date||''}" style="max-width:160px;" />
+    </div>
+    <div style="margin-bottom:8px;">
+      <textarea class="add-input" id="edit-min-body-${id}" style="min-height:80px;resize:vertical;">${m.body||''}</textarea>
+    </div>
+    <div style="margin-bottom:8px;">
+      <textarea class="add-input" id="edit-min-tasks-${id}" style="min-height:50px;resize:vertical;">${m.tasks||''}</textarea>
+    </div>
+    <div class="minutes-footer">
+      <button class="minutes-edit-btn" onclick="saveMinutesEdit(${id})">💾 保存</button>
+      <button class="minutes-del-btn" onclick="renderMinutes()">キャンセル</button>
+    </div>`;
+}
+
+function saveMinutesEdit(id) {
+  const m = (app.minutes||[]).find(x => x.id === id);
+  if (!m) return;
+  m.title = document.getElementById('edit-min-title-' + id).value.trim();
+  m.date  = document.getElementById('edit-min-date-'  + id).value;
+  m.body  = document.getElementById('edit-min-body-'  + id).value.trim();
+  m.tasks = document.getElementById('edit-min-tasks-' + id).value.trim();
+  save(); renderMinutes();
+}
+
 function renderAfterLoad() {
   try {
-    if (!app || typeof app !== 'object') app = { theme:'dark', clients:[], clientTasks:[], todos:[], memoClient:'', memoTodo:'', nextId:1 };
+    if (!app || typeof app !== 'object') app = { theme:'dark', clients:[], clientTasks:[], todos:[], minutes:[], memoClient:'', memoTodo:'', memoMinutes:'', nextId:1 };
+    if (!Array.isArray(app.minutes)) app.minutes = [];
     if (!Array.isArray(app.clients))     app.clients = [];
     if (!Array.isArray(app.clientTasks)) app.clientTasks = [];
     if (!Array.isArray(app.todos))       app.todos = [];
@@ -434,6 +551,7 @@ function renderAfterLoad() {
     initMemos();
     renderClients();
     renderTodo();
+    renderMinutes();
     checkDeadlineAlerts();
   } catch(e) {
     console.warn('renderAfterLoad error:', e);
@@ -456,14 +574,23 @@ document.body.setAttribute('data-theme', app.theme||'dark');
 function initMemos() {
   const mc = document.getElementById('memo-client');
   const mt = document.getElementById('memo-todo');
+  const mm = document.getElementById('memo-minutes');
   mc.value = app.memoClient||'';
   mt.value = app.memoTodo||'';
+  if(mm) mm.value = app.memoMinutes||'';
   mc.addEventListener('input', () => { app.memoClient=mc.value; save(); });
   mt.addEventListener('input', () => { app.memoTodo=mt.value; save(); });
+  if(mm) mm.addEventListener('input', () => { app.memoMinutes=mm.value; save(); });
 }
 
 // ── Date helpers ──
-function todayStr() { return new Date().toISOString().slice(0,10); }
+function todayStr() {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth()+1).padStart(2,'0');
+  const d = String(now.getDate()).padStart(2,'0');
+  return `${y}-${m}-${d}`;
+}
 function daysLeft(due) {
   if(!due) return null;
   return Math.ceil((new Date(due)-new Date(todayStr()))/86400000);
@@ -622,7 +749,7 @@ document.getElementById('modal-input').addEventListener('keydown',e=>{if(e.key==
 
 // ── Tabs ──
 function showTab(name){
-  ['client','todo'].forEach(n=>{
+  ['client','todo','minutes'].forEach(n=>{
     document.getElementById('tab-'+n).classList.toggle('active',n===name);
     document.getElementById('sec-'+n).classList.toggle('active',n===name);
   });
@@ -795,6 +922,16 @@ function setTodoDue(id, val) {
 function printPDF() {
   window.print();
 }
+
+// ── 日時表示 ──
+function updateDatetime() {
+  const el = document.getElementById('datetime-display');
+  if (!el) return;
+  const now = new Date();
+  const date = now.toLocaleDateString('ja-JP', { month:'numeric', day:'numeric', weekday:'short' });
+  el.innerHTML = `<span style="font-size:12px;color:var(--text-dim);font-family:'JetBrains Mono',monospace;">${date}</span>`;
+}
+updateDatetime();
 
 // ── Init ──
 async function init() {
