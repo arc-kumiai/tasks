@@ -188,6 +188,14 @@
   .minutes-del-btn { font-size:11px; background:none; border:1px solid var(--border); border-radius:4px; color:var(--text-muted); padding:3px 10px; cursor:pointer; }
   .minutes-del-btn:hover { color:var(--accent4); border-color:var(--accent4); }
   .minutes-card.editing { border-color:var(--accent); cursor:default; }
+  /* 議事録編集モーダル */
+  .minutes-modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.7); z-index:400; align-items:flex-start; justify-content:center; padding:16px; overflow-y:auto; }
+  .minutes-modal-overlay.open { display:flex; }
+  .minutes-modal { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:20px; width:100%; max-width:640px; margin:auto; display:flex; flex-direction:column; gap:12px; }
+  .minutes-modal h3 { font-size:14px; font-weight:700; color:var(--text-dim); margin-bottom:2px; }
+  .minutes-modal .add-input { width:100%; }
+  .minutes-modal textarea.add-input { resize:vertical; }
+  .minutes-modal-footer { display:flex; justify-content:flex-end; gap:8px; }
 
   @media print {
     .topbar,.add-area,.task-check,.task-del,.pdf-btn,.memo-box { display:none !important; }
@@ -300,6 +308,29 @@
     <div id="minutes-list"></div>
   </div>
 </main>
+
+<!-- 議事録編集モーダル -->
+<div class="minutes-modal-overlay" id="minutes-edit-modal" onclick="if(event.target===this)closeMinutesModal()">
+  <div class="minutes-modal">
+    <h3>議事録を編集</h3>
+    <div style="display:flex;gap:8px;">
+      <input class="add-input" id="medit-title" placeholder="タイトル" style="flex:1;" />
+      <input class="add-input" type="date" id="medit-date" style="max-width:160px;" />
+    </div>
+    <div>
+      <div class="minutes-section-label" style="margin-bottom:6px;">📝 内容</div>
+      <textarea class="add-input" id="medit-body" placeholder="内容…" style="min-height:160px;resize:vertical;"></textarea>
+    </div>
+    <div>
+      <div class="minutes-section-label" style="margin-bottom:6px;">✅ 次回までのタスク</div>
+      <textarea class="add-input" id="medit-tasks" placeholder="次回までのタスク…" style="min-height:100px;resize:vertical;"></textarea>
+    </div>
+    <div class="minutes-modal-footer">
+      <button class="modal-close" onclick="closeMinutesModal()">キャンセル</button>
+      <button class="add-btn" onclick="saveMinutesModal()">💾 保存</button>
+    </div>
+  </div>
+</div>
 
 <!-- 企業管理モーダル -->
 <div class="modal-overlay" id="modal" onclick="if(event.target===this)closeModal()">
@@ -525,37 +556,36 @@ function delMinutes(id) {
   save(); renderMinutes();
 }
 
+let _editMinutesId = null;
+
 function editMinutes(id) {
   const m = (app.minutes||[]).find(x => x.id === id);
   if (!m) return;
-  const card = document.getElementById('mc-' + id);
-  if (!card) return;
-  card.classList.add('editing');
-  card.innerHTML = `
-    <div class="add-row" style="margin-bottom:8px;">
-      <input class="add-input" id="edit-min-title-${id}" value="${m.title||''}" placeholder="タイトル" />
-      <input class="add-input" type="date" id="edit-min-date-${id}" value="${m.date||''}" style="max-width:160px;" />
-    </div>
-    <div style="margin-bottom:8px;">
-      <textarea class="add-input" id="edit-min-body-${id}" style="min-height:80px;resize:vertical;">${m.body||''}</textarea>
-    </div>
-    <div style="margin-bottom:8px;">
-      <textarea class="add-input" id="edit-min-tasks-${id}" style="min-height:50px;resize:vertical;">${m.tasks||''}</textarea>
-    </div>
-    <div class="minutes-footer">
-      <button class="minutes-edit-btn" onclick="saveMinutesEdit(${id})">💾 保存</button>
-      <button class="minutes-del-btn" onclick="renderMinutes()">キャンセル</button>
-    </div>`;
+  _editMinutesId = id;
+  document.getElementById('medit-title').value = m.title || '';
+  document.getElementById('medit-date').value  = m.date  || '';
+  document.getElementById('medit-body').value  = m.body  || '';
+  document.getElementById('medit-tasks').value = m.tasks || '';
+  document.getElementById('minutes-edit-modal').classList.add('open');
+  setTimeout(() => document.getElementById('medit-title').focus(), 100);
 }
 
-function saveMinutesEdit(id) {
-  const m = (app.minutes||[]).find(x => x.id === id);
+function closeMinutesModal() {
+  document.getElementById('minutes-edit-modal').classList.remove('open');
+  _editMinutesId = null;
+}
+
+function saveMinutesModal() {
+  if (_editMinutesId === null) return;
+  const m = (app.minutes||[]).find(x => x.id === _editMinutesId);
   if (!m) return;
-  m.title = document.getElementById('edit-min-title-' + id).value.trim();
-  m.date  = document.getElementById('edit-min-date-'  + id).value;
-  m.body  = document.getElementById('edit-min-body-'  + id).value.trim();
-  m.tasks = document.getElementById('edit-min-tasks-' + id).value.trim();
-  save(); renderMinutes();
+  m.title = document.getElementById('medit-title').value.trim();
+  m.date  = document.getElementById('medit-date').value;
+  m.body  = document.getElementById('medit-body').value.trim();
+  m.tasks = document.getElementById('medit-tasks').value.trim();
+  save();
+  closeMinutesModal();
+  renderMinutes();
 }
 
 function renderAfterLoad() {
